@@ -1,0 +1,217 @@
+v2
+
+currencies {
+ id: UUID (primary-key, unique, not-null)
+ name: VARCHAR(256) (unique, not-null)
+ code: VARCHAR(3) (unique, not-null)
+ symbol: VARCHAR(5) (unique, not-null)
+ created_at: TIMESTAMPTZ (default now())
+}
+
+users {
+ id: UUID (primary-key, unique,not-null)
+ email: VARCHAR(256) (unique,not-null)
+ password: TEXT (not-null,encrypted password using bcrypt)
+ created_at: TIMESTAMPTZ (default now())
+ updated_at: TIMESTAMPTZ (default now())
+ selected_currency_id: UUID (not-null,foreign-key, what currency should be used for an account will be taken as input during signup)
+}
+
+accounts {
+ id: UUID (primary-key, unique,not-null)
+ user_id: UUID (foreign-key,not-null)
+ name: VARCHAR(256,not-null)
+ balance: NUMERIC(15, 2) (Default 0.00)
+ created_at: TIMESTAMPTZ (default now())
+ updated_at: TIMESTAMPTZ (default now())
+ 
+ [index should be created upon (user_id) and covering index on (name,balance)]
+ [(user_id,name) should be unique in a table so that users cannot create duplicate accounts]
+}
+
+categories {
+ id: UUID (primary-key, unique,not-null)
+ user_id: UUID (foreign-key,not-null)
+ name: VARCHAR(256) (,not-null)
+ created_at: TIMESTAMPTZ (default now())
+ updated_at: TIMESTAMPTZ (default now())
+ 
+ [index should be created upon (user_id) and covering index on (name)]
+ [(user_id,name) should be unique in a table so that users cannot create duplicate categories]
+}
+
+enum TRANSACTION_TYPE {
+  income
+  expense
+}
+
+transactions {
+ id: UUID (primary-key, unique,not-null)
+ account_id: UUID (foreign-key,not-null)
+ user_id: UUID (foreign-key,not-null)
+ amount: NUMERIC(15, 2) (>= 0 db level check,not-null)
+ category_id: UUID (foreign-key,not-null)
+ transaction_type: TRANSACTION_TYPE (not-null)
+ transaction_date: TIMESTAMPTZ (not-null)
+ description: VARCHAR(512)
+ created_at: TIMESTAMPTZ (default now())
+ 
+ [index on (user_id,transaction_date,category_id) INCLUDE (amount) as covering index where transaction_type=TRANSACTION_TYPE.income as partial index]
+ [index on (user_id,transaction_date,category_id) INCLUDE (amount) as covering index where transaction_type=TRANSACTION_TYPE.expense as partial index]
+}
+
+budgets {
+ id: UUID (primary-key, unique,(not-null))
+ category_id: UUID (foreign-key,(not-null))
+ user_id: UUID (foreign-key,(not-null))
+ amount: NUMERIC(15, 2) (>= 0 db level check,(not-null))
+ month: SMALLINT (1 to 12,(not-null))
+ year: SMALLINT (not-null)
+ created_at: TIMESTAMPTZ (default now())
+ updated_at: TIMESTAMPTZ (default now())
+ 
+ // [index should be created upon (user_id,month,year) including (category_id,amount) as covering index]
+ [(user_id,category_id,month,year) should be unique in a table so that users cannot create duplicate budgets]
+}
+
+Non-Guarded endpoints
+
+POST auth/signup
+body {
+ email
+ password
+ selected_currency_id
+} (All the fields is to be validated)
+Will return jwt access(15m) and refresh token(24h)
+Access token will contain email,user_id and currency code and currency symbol
+
+POST auth/signin
+body {
+ email
+ password
+} (All the fields is to be validated)
+Will return jwt access(15m) and refresh token(24h)
+Access token will contain email, and currency code and currency symbol
+
+GET /currencies (currencies are pre-filled by creator i.e. me or developer)
+
+Guarded endpoints (jwt middleware guard)
+
+GET /accounts
+GET /accounts/{id}
+
+POST /accounts
+body {
+name
+} (name will be validated to be not null)
+
+PATCH /accounts/${id}
+body {
+name
+} (Any other field and error thrown)
+
+GET /categories
+
+POST /categories
+body {
+name
+} (name will be validated to be not null)
+
+PATCH /categories/${id}
+body {
+name
+} (Any other field and error thrown)
+
+GET /transactions?account_id={val}&transaction_type={val}&transaction_date={val}&category_id={val} [these are optional ]
+
+POST /transactions
+body {
+account_id,
+amount,
+category_id,
+transaction_type,
+transaction_date
+} (All the fields to be validated account_id and category_id exists, amount > 0, transaction_type is enum value only, transaction_date valid date)
+
+GET /budgets
+
+GET /budgets?month={val}&year={val}
+
+
+POST /budgets 
+body {
+category_id,
+amount,
+month,
+year
+}
+
+And the endpoints for specific aggregation queries will depend on the info we will show on the dashbaord so provide the exhaustive list of info show on dashbaord
+
+Section 1
+
+SELECT 
+a.name , a.balance
+FROM
+accounts a
+WHERE 
+a.user_id = {val}
+
+Then frontend can list all the data and calculate total balance
+
+Section 2
+
+SELECT 
+c.name , SUM(t.amount)
+FROM 
+transactions t
+JOIN categories c ON t.category_id = c.id
+WHERE
+t.user_id = {val} AND 
+t.transaction_type=TRANSACTION_TYPE.income AND 
+t.transaction_date >= TIMESTAMPTZ '{year}-{month}-01 00:00:00+00' AND
+t.transaction_date <  TIMESTAMPTZ '{year}-{month + 1}-01 00:00:00+00'
+GROUP BY
+c.id, c.name
+
+SELECT 
+c.name , SUM(t.amount)
+FROM 
+transactions t
+JOIN categories c ON t.category_id = c.id
+WHERE
+t.user_id = {val} AND 
+t.transaction_type=TRANSACTION_TYPE.expense AND 
+t.transaction_date >= TIMESTAMPTZ '{year}-{month}-01 00:00:00+00' AND
+t.transaction_date <  TIMESTAMPTZ '{year}-{month + 1}-01 00:00:00+00'
+GROUP BY
+c.id, c.name
+
+Section 3
+
+SELECT 
+c.name , SUM(t.amount)
+FROM 
+transactions t
+JOIN categories c ON t.category_id = c.id
+WHERE
+t.user_id = {val} AND 
+t.transaction_type=TRANSACTION_TYPE.expense AND 
+t.transaction_date >= TIMESTAMPTZ '{year}-{current_month}-01 00:00:00+00' AND
+t.transaction_date <  TIMESTAMPTZ '{year}-{current_month + 1}-01 00:00:00+00'
+GROUP BY
+c.id, c.name
+
+SELECT 
+c.name , b.amount
+FROM 
+budgets b
+JOIN categories c ON b.category_id = c.id
+WHERE 
+b.user_id = {val} AND
+b.month={current_month} AND
+b.year = {year_val}
+GROUP BY
+c.id, c.name
+
+After obtaining above values app logic will group data and return final data to frontend by using Map() handling on the app logic to avoid complicated JOINs and both sql queries return grouped data so will not be very large for app logic
