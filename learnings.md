@@ -53,3 +53,6 @@ this.id = id; // Created and assigned automatically
 }
 
 Thus for error hadnling in express 5 what is needed a gloabal AppError and error middleware, error is propagated automatically in express5 and a error handler middleware
+
+How to generate and use primsma client
+https://chatgpt.com/g/g-p-6a49c38571148191bf064b777151e370-software-engineering-upskilling-2026/c/6a51a973-8808-83e8-b5e9-a3345b394c10
