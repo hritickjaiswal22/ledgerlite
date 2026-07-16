@@ -91,6 +91,6 @@ export async function refresh(data: RefreshBody) {
       }),
     };
   } catch (error) {
-    throw new AppError("Unauthorized", 401);
+    throw new AppError("Unauthorized or Invalid refresh token", 401);
   }
 }

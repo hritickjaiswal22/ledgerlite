@@ -56,3 +56,6 @@ Thus for error hadnling in express 5 what is needed a gloabal AppError and error
 
 How to generate and use primsma client
 https://chatgpt.com/g/g-p-6a49c38571148191bf064b777151e370-software-engineering-upskilling-2026/c/6a51a973-8808-83e8-b5e9-a3345b394c10
+
+Typed Params
+https://chatgpt.com/g/g-p-6a49c38571148191bf064b777151e370-software-engineering-upskilling-2026/c/6a58830b-0a20-83e8-9587-0d0d335e4922
