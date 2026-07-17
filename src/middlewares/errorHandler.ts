@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { AppError } from "../errors/AppError";
+import { Prisma } from "../generated/prisma/client";
 
 export function errorHandler(
   err: unknown,
@@ -14,7 +15,15 @@ export function errorHandler(
     });
   }
 
-  console.error(err);
+  if (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002"
+  ) {
+    return res.status(409).send({
+      success: false,
+      message: "An account with this name already exists.",
+    });
+  }
 
   return res.status(500).send({
     success: false,
