@@ -21,6 +21,7 @@ export const createAccountSchema = z.object({
         },
       )
       .optional(), // Makes the entire balance block optional
+    type: z.enum(["CASH", "BANK", "CREDIT_CARD"]),
   }),
 });
 
