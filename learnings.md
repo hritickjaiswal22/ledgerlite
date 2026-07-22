@@ -59,3 +59,9 @@ https://chatgpt.com/g/g-p-6a49c38571148191bf064b777151e370-software-engineering-
 
 Typed Params
 https://chatgpt.com/g/g-p-6a49c38571148191bf064b777151e370-software-engineering-upskilling-2026/c/6a58830b-0a20-83e8-9587-0d0d335e4922
+
+'npx prisma migrate dev --create-only --name add_account_type'
+Creates aan empty migration
+
+after this you can add your manual constraint and then 'npx prisma migrate dev' - this command will execute the migration
+![alt text](learnings_assets/image.png)

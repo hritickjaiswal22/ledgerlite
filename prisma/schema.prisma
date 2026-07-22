@@ -1,11 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -19,70 +15,97 @@ model Currency {
   symbol    String   @unique @db.VarChar(5)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  // Back Relation
-  users User[]
+  users     User[]
 
   @@map("currencies")
 }
 
 model User {
-  id                 String   @id @default(uuid()) @db.Uuid
-  email              String   @unique @db.VarChar(256)
-  password           String   @db.Text
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  selectedCurrencyId String   @map("selected_currency_id") @db.Uuid
-  selectedCurrency   Currency @relation(fields: [selectedCurrencyId], references: [id])
-
-  // Back Relations
-  accounts     Account[]
-  categories   Category[]
-  transactions Transaction[]
-  budgets      Budget[]
+  id                 String        @id @default(uuid()) @db.Uuid
+  email              String        @unique @db.VarChar(256)
+  password           String
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  selectedCurrencyId String        @map("selected_currency_id") @db.Uuid
+  accounts           Account[]
+  budgets            Budget[]
+  categories         Category[]
+  transactions       Transaction[]
+  selectedCurrency   Currency      @relation(fields: [selectedCurrencyId], references: [id])
 
   @@map("users")
 }
 
 model Account {
-  id        String   @id @default(uuid()) @db.Uuid
-
-  userId    String   @map("user_id") @db.Uuid
-  user      User     @relation(fields: [userId], references: [id])
-
-  name      String   @db.VarChar(256)
-  balance   Decimal  @default(0.00) @db.Decimal(15, 2)
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@unique([userId, name])
-
-  // Back Relation
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  name         String        @db.VarChar(256)
+  balance      Decimal       @default(0.00) @db.Decimal(15, 2)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  type         AccountType
+  user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
 
+  @@unique([userId, name])
   @@map("accounts")
 }
 
 model Category {
-  id        String   @id @default(uuid()) @db.Uuid
-
-  userId    String   @map("user_id") @db.Uuid
-  user      User     @relation(fields: [userId], references: [id])
-
-  name      String   @db.VarChar(256)
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  name         String        @db.VarChar(256)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  budgets      Budget[]
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
 
   @@unique([userId, name])
-
-  // Back Relations
-  transactions Transaction[]
-  budgets      Budget[]
-
   @@map("categories")
+}
+
+model Transaction {
+  id              String          @id @default(uuid()) @db.Uuid
+  accountId       String          @map("account_id") @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  categoryId      String          @map("category_id") @db.Uuid
+  amount          Decimal         @db.Decimal(15, 2)
+  transactionType TransactionType @map("transaction_type")
+  transactionDate DateTime        @map("transaction_date") @db.Timestamptz(6)
+  description     String?         @db.VarChar(512)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  account         Account         @relation(fields: [accountId], references: [id])
+  category        Category        @relation(fields: [categoryId], references: [id])
+  user            User            @relation(fields: [userId], references: [id])
+
+  @@index([userId, transactionDate, categoryId, amount], map: "idx_transactions_expense", where: raw("(transaction_type = 'expense'::\"TRANSACTION_TYPE\")"))
+  @@index([userId, transactionDate, categoryId, amount], map: "idx_transactions_income", where: raw("(transaction_type = 'income'::\"TRANSACTION_TYPE\")"))
+  @@map("transactions")
+}
+
+model Budget {
+  id         String   @id @default(uuid()) @db.Uuid
+  categoryId String   @map("category_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  amount     Decimal  @db.Decimal(15, 2)
+  month      Int      @db.SmallInt
+  year       Int      @db.SmallInt
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  category   Category @relation(fields: [categoryId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, categoryId, month, year])
+  @@map("budgets")
+}
+
+enum AccountType {
+  CASH
+  BANK
+  CREDIT_CARD
+
+  @@map("ACCOUNT_TYPE")
 }
 
 enum TransactionType {
@@ -90,51 +113,4 @@ enum TransactionType {
   expense
 
   @@map("TRANSACTION_TYPE")
-}
-
-model Transaction {
-  id              String          @id @default(uuid()) @db.Uuid
-
-  accountId       String          @map("account_id") @db.Uuid
-  account         Account         @relation(fields: [accountId], references: [id])
-
-  userId          String          @map("user_id") @db.Uuid
-  user            User            @relation(fields: [userId], references: [id])
-
-  categoryId      String          @map("category_id") @db.Uuid
-  category        Category        @relation(fields: [categoryId], references: [id])
-
-  amount          Decimal         @db.Decimal(15, 2)
-
-  transactionType TransactionType @map("transaction_type")
-
-  transactionDate DateTime        @map("transaction_date") @db.Timestamptz(6)
-
-  description     String?         @db.VarChar(512)
-
-  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  @@map("transactions")
-}
-
-model Budget {
-  id         String   @id @default(uuid()) @db.Uuid
-
-  categoryId String   @map("category_id") @db.Uuid
-  category   Category @relation(fields: [categoryId], references: [id])
-
-  userId     String   @map("user_id") @db.Uuid
-  user       User     @relation(fields: [userId], references: [id])
-
-  amount     Decimal  @db.Decimal(15, 2)
-
-  month      Int      @db.SmallInt
-  year       Int      @db.SmallInt
-
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@unique([userId, categoryId, month, year])
-
-  @@map("budgets")
 }

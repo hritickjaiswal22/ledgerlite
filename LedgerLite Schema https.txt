@@ -17,11 +17,18 @@ users {
  selected_currency_id: UUID (not-null,foreign-key, what currency should be used for an account will be taken as input during signup)
 }
 
+enum ACCOUNT_TYPE {
+  cash
+  bank
+  credit_card
+}
+
 accounts {
  id: UUID (primary-key, unique,not-null)
  user_id: UUID (foreign-key,not-null)
  name: VARCHAR(256,not-null)
- balance: NUMERIC(15, 2) (Default 0.00)
+ account_type: ACCOUNT_TYPE (not-null)
+ balance: NUMERIC(15, 2) (Default 0.00) (check that for cash and bank >= 0)
  created_at: TIMESTAMPTZ (default now())
  updated_at: TIMESTAMPTZ (default now())
  

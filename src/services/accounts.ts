@@ -11,6 +11,7 @@ export async function createAccount(
       name: accDetails.name,
       balance: accDetails.balance,
       userId: userId,
+      type: accDetails.type,
     },
   });
 
