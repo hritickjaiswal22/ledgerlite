@@ -54,14 +54,661 @@ this.id = id; // Created and assigned automatically
 
 Thus for error hadnling in express 5 what is needed a gloabal AppError and error middleware, error is propagated automatically in express5 and a error handler middleware
 
-How to generate and use primsma client
+# How to generate and use primsma client
+
 https://chatgpt.com/g/g-p-6a49c38571148191bf064b777151e370-software-engineering-upskilling-2026/c/6a51a973-8808-83e8-b5e9-a3345b394c10
 
-Typed Params
+# Typed Params
+
 https://chatgpt.com/g/g-p-6a49c38571148191bf064b777151e370-software-engineering-upskilling-2026/c/6a58830b-0a20-83e8-9587-0d0d335e4922
+
+# Primsa migration strategy
 
 'npx prisma migrate dev --create-only --name add_account_type'
 Creates aan empty migration
 
 after this you can add your manual constraint and then 'npx prisma migrate dev' - this command will execute the migration
 ![alt text](learnings_assets/image.png)
+
+# req.query vs req.params
+
+In Express.js, req.params extracts data from the URL path itself using defined placeholders, while req.query captures optional key-value pairs attached to the very end of the URL after a question mark.
+
+![alt text](learnings_assets/req%20params%20vs%20query.png)
+
+# Req validation in backend
+
+This is a great question because **there are two separate concerns**:
+
+1. **Runtime validation** (Zod)
+2. **Compile-time typing** (TypeScript)
+
+A production solution solves **both**.
+
+---
+
+# The problem
+
+Suppose a request comes in:
+
+```http
+GET /transactions?limit=20
+```
+
+Express gives you:
+
+```ts
+req.query = {
+  limit: "20",
+};
+```
+
+After Zod:
+
+```ts
+{
+  query: {
+    limit: 20,
+  },
+}
+```
+
+Now the question is:
+
+> **Where do we put this parsed object?**
+
+---
+
+# Option 1 — Parse in every controller (Simple)
+
+```ts
+const { query } = getTransactionsSchema.parse({
+  query: req.query,
+});
+```
+
+Pros:
+
+- Very simple
+- Fully typed
+
+Cons:
+
+- Repeated in every controller
+
+---
+
+# Option 2 — Mutate `req.body` (Common for body)
+
+```ts
+req.body = parsed.body;
+```
+
+Works because Express types
+
+```ts
+body: any;
+```
+
+---
+
+# Option 3 — Mutate `req.query`
+
+```ts
+req.query = parsed.query;
+```
+
+This is where things break.
+
+Express defines
+
+```ts
+query: ParsedQs;
+```
+
+which assumes values are strings.
+
+Your parsed object now contains numbers, booleans, dates, etc.
+
+TypeScript is protecting you.
+
+---
+
+# Production Pattern: Add a New Property
+
+Instead of changing Express's properties, add your own.
+
+For example:
+
+```ts
+req.validated = parsed;
+```
+
+Now your middleware becomes:
+
+```
+Incoming Request
+       │
+       ▼
+Validation Middleware
+       │
+       ├── validate body
+       ├── validate query
+       ├── validate params
+       ▼
+req.validated
+```
+
+The original Express request remains untouched.
+
+---
+
+# Example
+
+Middleware:
+
+```ts
+const parsed = schema.parse({
+  body: req.body,
+  query: req.query,
+  params: req.params,
+});
+
+req.validated = parsed;
+
+next();
+```
+
+Controller:
+
+```ts
+const { body, query, params } = req.validated;
+```
+
+Very clean.
+
+---
+
+# But TypeScript still complains...
+
+Because Express doesn't know `validated` exists.
+
+So we extend the Express `Request` interface.
+
+Create something like:
+
+```ts
+declare global {
+  namespace Express {
+    interface Request {
+      validated: unknown;
+    }
+  }
+}
+```
+
+Now TypeScript knows
+
+```ts
+req.validated;
+```
+
+exists.
+
+---
+
+# But `unknown` isn't useful...
+
+Correct.
+
+Now we make the middleware generic.
+
+Instead of
+
+```ts
+req.validated: unknown
+```
+
+we want
+
+```ts
+req.validated: z.infer<typeof schema>
+```
+
+For example
+
+```ts
+const schema = z.object({
+  query: z.object({
+    limit: z.number(),
+  }),
+});
+```
+
+Inside the controller, we'd like
+
+```ts
+req.validated.query.limit;
+```
+
+to be typed as
+
+```ts
+number;
+```
+
+---
+
+# Here's the catch
+
+A single global property cannot magically have a different type for every route.
+
+One route has
+
+```ts
+{
+  query: {
+    limit: number;
+  }
+}
+```
+
+Another has
+
+```ts
+{
+  body: {
+    email: string;
+  }
+}
+```
+
+Another has
+
+```ts
+{
+  params: {
+    id: string;
+  }
+}
+```
+
+Which one should `req.validated` be?
+
+TypeScript can't know unless the route itself carries that type information.
+
+---
+
+# What production frameworks do
+
+Frameworks like **NestJS**, **tRPC**, **Hono**, and **Elysia** solve this by making the route handler generic.
+
+Conceptually:
+
+```ts
+app.get<typeof schema>("/transactions", validate(schema), (req, res) => {
+  // req.validated is inferred from `schema`
+});
+```
+
+The type of the handler is linked to the type of the validation schema.
+
+---
+
+# What about Express?
+
+Express wasn't designed with this in mind.
+
+So most production Express + TypeScript codebases choose one of these:
+
+1. **Parse inside the controller** (simple, very common)
+2. **Store parsed data in `res.locals`** with custom typing
+3. **Use a custom `TypedRequest` generic** for each route
+4. **Accept a small type assertion** after middleware
+
+---
+
+## What recommended for LedgerLite
+
+Since the goal is to become a strong backend engineer rather than build a framework, I'd do this progression:
+
+1. **Current phase:** Parse `query` in the controller and use middleware for `body`.
+2. **After you've built a dozen APIs:** Refactor to a `req.validated` or `res.locals.validated` pattern with Express type augmentation.
+3. **Later:** Learn how frameworks like NestJS and Hono propagate Zod types through middleware. That will make the limitations of plain Express much easier to appreciate.
+
+This way you learn the concepts in the same order they're typically encountered in real-world projects, without getting bogged down in advanced TypeScript before you've finished building your API.
+
+# Fixes needed are
+
+Remove || "" for userIds
+Return only selected fields from services
+Add index on transaction for normal last n transaction type current has where on type
+fix expense enum type
+
+You're about **70% there**. Your explanation captures one advantage of cursor pagination (stability), but you're missing the **other major advantage**: **performance**.
+
+Let's build the mental model.
+
+---
+
+# 1. Why is offset pagination bad?
+
+Suppose you have **1 million transactions**.
+
+You request:
+
+```http
+GET /transactions?limit=20&offset=0
+```
+
+Database returns rows 1–20.
+
+Easy.
+
+Now you request:
+
+```http
+GET /transactions?limit=20&offset=500000
+```
+
+Conceptually, PostgreSQL has to do something like:
+
+```text
+1
+2
+3
+...
+499,999
+500,000  ← Skip
+500,001  ← Skip
+...
+500,020  ← Return
+```
+
+It still has to walk past all those earlier rows to reach the requested offset. As the offset grows, the work generally grows too.
+
+That's why deep pagination becomes slower.
+
+---
+
+# Cursor pagination
+
+Instead, you send:
+
+```http
+GET /transactions?cursorDate=...&cursorId=...
+```
+
+The query becomes:
+
+```sql
+WHERE
+transactionDate < cursorDate
+OR (
+    transactionDate = cursorDate
+    AND id < cursorId
+)
+ORDER BY transactionDate DESC, id DESC
+LIMIT 20
+```
+
+Now PostgreSQL can use an index to jump directly near the cursor position instead of counting through hundreds of thousands of earlier rows.
+
+That's the **performance** advantage.
+
+---
+
+# 2. Stability
+
+This is the example you were thinking about.
+
+Suppose transactions ordered newest first are:
+
+```text
+A
+B
+C
+D
+E
+F
+```
+
+Page size = 2
+
+Page 1:
+
+```text
+A
+B
+```
+
+---
+
+Now someone deletes **A**.
+
+The table becomes:
+
+```text
+B
+C
+D
+E
+F
+```
+
+---
+
+### Offset pagination
+
+You ask:
+
+```http
+offset=2
+```
+
+The database now returns:
+
+```text
+D
+E
+```
+
+You **never saw C**.
+
+---
+
+### Cursor pagination
+
+Your cursor is:
+
+```text
+B
+```
+
+The query says:
+
+> Give me rows after B.
+
+Result:
+
+```text
+C
+D
+```
+
+No rows are skipped.
+
+That's the **stability** advantage.
+
+---
+
+# What about inserts?
+
+Suppose after page 1:
+
+```text
+A
+B
+C
+D
+E
+```
+
+someone inserts:
+
+```text
+X
+```
+
+at the top.
+
+Table becomes:
+
+```text
+X
+A
+B
+C
+D
+E
+```
+
+---
+
+Offset:
+
+```http
+offset=2
+```
+
+returns
+
+```text
+B
+C
+```
+
+You see **B twice**.
+
+---
+
+Cursor:
+
+Cursor = B
+
+returns
+
+```text
+C
+D
+```
+
+Still correct.
+
+---
+
+# 3. Why isn't UUID alone enough?
+
+This is the part many people miss.
+
+Suppose your ordering is:
+
+```sql
+ORDER BY transactionDate DESC
+```
+
+Now imagine these rows:
+
+```text
+id      date
+--------------------------
+A       10:00
+B       10:00
+C       10:00
+D       09:59
+```
+
+All three have the same timestamp.
+
+Suppose page size = 2.
+
+You return
+
+```text
+A
+B
+```
+
+Now the client sends:
+
+```text
+cursor = B
+```
+
+If your query is only
+
+```sql
+WHERE id < B
+```
+
+does that match your sort order?
+
+No.
+
+Your results are ordered by **transactionDate**, not by UUID.
+
+UUIDs (especially random v4 UUIDs) have no meaningful chronological relationship to transaction dates.
+
+---
+
+Instead you need
+
+```sql
+WHERE
+transactionDate < cursorDate
+OR (
+    transactionDate = cursorDate
+    AND id < cursorId
+)
+```
+
+because your ordering is
+
+```sql
+ORDER BY
+transactionDate DESC,
+id DESC
+```
+
+The cursor has to include **every column that participates in the ordering**.
+
+---
+
+# The rule to remember
+
+> **A cursor must uniquely identify a position in the sorted result set.**
+
+If your sort is:
+
+```sql
+ORDER BY transactionDate DESC
+```
+
+and timestamps are guaranteed unique (rare), then the timestamp alone could work.
+
+If your sort is:
+
+```sql
+ORDER BY transactionDate DESC, id DESC
+```
+
+then the cursor **must contain both**:
+
+- `transactionDate`
+- `id`
+
+because together they uniquely define the position in that ordered list.
+
+---
+
+This "cursor matches the sort order" principle is the key mental model. Once you have it, you'll know how to design stable cursor pagination for almost any dataset, regardless of which columns you're sorting by.

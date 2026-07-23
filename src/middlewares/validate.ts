@@ -14,7 +14,9 @@ export function validate<T extends z.ZodObject<z.core.$ZodShape>>(schema: T) {
       });
     }
 
-    req.body = result.data.body;
+    if ("body" in result.data) {
+      req.body = result.data.body;
+    }
 
     next();
   };
