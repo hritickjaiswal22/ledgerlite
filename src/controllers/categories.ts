@@ -50,8 +50,5 @@ export async function updateCategoryController(
 ) {
   await updateCategory(req.params.categoryId, req.body, req.user?.userId || "");
 
-  return res.status(204).send({
-    success: true,
-    message: "Category updated successfully",
-  });
+  return res.status(204).send();
 }
