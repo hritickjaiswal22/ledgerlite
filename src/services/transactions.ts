@@ -82,9 +82,14 @@ export async function getTransactions(
     where: {
       userId,
     },
-    orderBy: {
-      transactionDate: "desc",
-    },
+    orderBy: [
+      {
+        transactionDate: "desc",
+      },
+      {
+        id: "desc",
+      },
+    ],
     take: queries.limit,
     select: {
       id: true,
