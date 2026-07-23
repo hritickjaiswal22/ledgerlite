@@ -384,3 +384,331 @@ Remove || "" for userIds
 Return only selected fields from services
 Add index on transaction for normal last n transaction type current has where on type
 fix expense enum type
+
+You're about **70% there**. Your explanation captures one advantage of cursor pagination (stability), but you're missing the **other major advantage**: **performance**.
+
+Let's build the mental model.
+
+---
+
+# 1. Why is offset pagination bad?
+
+Suppose you have **1 million transactions**.
+
+You request:
+
+```http
+GET /transactions?limit=20&offset=0
+```
+
+Database returns rows 1–20.
+
+Easy.
+
+Now you request:
+
+```http
+GET /transactions?limit=20&offset=500000
+```
+
+Conceptually, PostgreSQL has to do something like:
+
+```text
+1
+2
+3
+...
+499,999
+500,000  ← Skip
+500,001  ← Skip
+...
+500,020  ← Return
+```
+
+It still has to walk past all those earlier rows to reach the requested offset. As the offset grows, the work generally grows too.
+
+That's why deep pagination becomes slower.
+
+---
+
+# Cursor pagination
+
+Instead, you send:
+
+```http
+GET /transactions?cursorDate=...&cursorId=...
+```
+
+The query becomes:
+
+```sql
+WHERE
+transactionDate < cursorDate
+OR (
+    transactionDate = cursorDate
+    AND id < cursorId
+)
+ORDER BY transactionDate DESC, id DESC
+LIMIT 20
+```
+
+Now PostgreSQL can use an index to jump directly near the cursor position instead of counting through hundreds of thousands of earlier rows.
+
+That's the **performance** advantage.
+
+---
+
+# 2. Stability
+
+This is the example you were thinking about.
+
+Suppose transactions ordered newest first are:
+
+```text
+A
+B
+C
+D
+E
+F
+```
+
+Page size = 2
+
+Page 1:
+
+```text
+A
+B
+```
+
+---
+
+Now someone deletes **A**.
+
+The table becomes:
+
+```text
+B
+C
+D
+E
+F
+```
+
+---
+
+### Offset pagination
+
+You ask:
+
+```http
+offset=2
+```
+
+The database now returns:
+
+```text
+D
+E
+```
+
+You **never saw C**.
+
+---
+
+### Cursor pagination
+
+Your cursor is:
+
+```text
+B
+```
+
+The query says:
+
+> Give me rows after B.
+
+Result:
+
+```text
+C
+D
+```
+
+No rows are skipped.
+
+That's the **stability** advantage.
+
+---
+
+# What about inserts?
+
+Suppose after page 1:
+
+```text
+A
+B
+C
+D
+E
+```
+
+someone inserts:
+
+```text
+X
+```
+
+at the top.
+
+Table becomes:
+
+```text
+X
+A
+B
+C
+D
+E
+```
+
+---
+
+Offset:
+
+```http
+offset=2
+```
+
+returns
+
+```text
+B
+C
+```
+
+You see **B twice**.
+
+---
+
+Cursor:
+
+Cursor = B
+
+returns
+
+```text
+C
+D
+```
+
+Still correct.
+
+---
+
+# 3. Why isn't UUID alone enough?
+
+This is the part many people miss.
+
+Suppose your ordering is:
+
+```sql
+ORDER BY transactionDate DESC
+```
+
+Now imagine these rows:
+
+```text
+id      date
+--------------------------
+A       10:00
+B       10:00
+C       10:00
+D       09:59
+```
+
+All three have the same timestamp.
+
+Suppose page size = 2.
+
+You return
+
+```text
+A
+B
+```
+
+Now the client sends:
+
+```text
+cursor = B
+```
+
+If your query is only
+
+```sql
+WHERE id < B
+```
+
+does that match your sort order?
+
+No.
+
+Your results are ordered by **transactionDate**, not by UUID.
+
+UUIDs (especially random v4 UUIDs) have no meaningful chronological relationship to transaction dates.
+
+---
+
+Instead you need
+
+```sql
+WHERE
+transactionDate < cursorDate
+OR (
+    transactionDate = cursorDate
+    AND id < cursorId
+)
+```
+
+because your ordering is
+
+```sql
+ORDER BY
+transactionDate DESC,
+id DESC
+```
+
+The cursor has to include **every column that participates in the ordering**.
+
+---
+
+# The rule to remember
+
+> **A cursor must uniquely identify a position in the sorted result set.**
+
+If your sort is:
+
+```sql
+ORDER BY transactionDate DESC
+```
+
+and timestamps are guaranteed unique (rare), then the timestamp alone could work.
+
+If your sort is:
+
+```sql
+ORDER BY transactionDate DESC, id DESC
+```
+
+then the cursor **must contain both**:
+
+- `transactionDate`
+- `id`
+
+because together they uniquely define the position in that ordered list.
+
+---
+
+This "cursor matches the sort order" principle is the key mental model. Once you have it, you'll know how to design stable cursor pagination for almost any dataset, regardless of which columns you're sorting by.
