@@ -74,17 +74,54 @@ interface getTransactionsQueryTypes {
   limit: number;
   cursorId?: string | undefined;
   cursorDate?: Date | undefined;
+  accountId?: string | undefined;
+  categoryId?: string | undefined;
+  type?: "income" | "expense";
+  startDate?: Date | undefined;
+  endDate?: Date | undefined;
 }
 
 export async function getTransactions(
   queries: getTransactionsQueryTypes,
   userId: string,
 ) {
-  const { limit, cursorDate, cursorId } = queries;
+  const {
+    limit,
+    cursorDate,
+    cursorId,
+    accountId,
+    categoryId,
+    endDate,
+    startDate,
+    type,
+  } = queries;
 
   const where: Prisma.TransactionWhereInput = {
     userId,
   };
+
+  if (accountId) {
+    where.accountId = accountId;
+  }
+
+  if (categoryId) {
+    where.categoryId = categoryId;
+  }
+
+  if (type) {
+    where.transactionType = type;
+  }
+
+  if (startDate && endDate) {
+    where.AND = [
+      {
+        transactionDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    ];
+  }
 
   if (cursorDate && cursorId) {
     where.OR = [

@@ -383,3 +383,4 @@ This way you learn the concepts in the same order they're typically encountered 
 Remove || "" for userIds
 Return only selected fields from services
 Add index on transaction for normal last n transaction type current has where on type
+fix expense enum type

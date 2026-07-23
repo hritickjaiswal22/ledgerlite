@@ -22,13 +22,9 @@ export async function getTransactionsController(req: Request, res: Response) {
     });
   }
 
-  const { limit, cursorDate, cursorId } = result.data;
-
   const transactions = await getTransactions(
     {
-      limit,
-      cursorDate,
-      cursorId,
+      ...result.data,
     },
     req.user?.userId || "",
   );
