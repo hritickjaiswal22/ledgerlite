@@ -69,3 +69,33 @@ export async function createTransaction(
     return transaction;
   });
 }
+
+interface getTransactionsQueryTypes {
+  limit: number;
+}
+
+export async function getTransactions(
+  queries: getTransactionsQueryTypes,
+  userId: string,
+) {
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      userId,
+    },
+    orderBy: {
+      transactionDate: "desc",
+    },
+    take: queries.limit,
+    select: {
+      id: true,
+      accountId: true,
+      amount: true,
+      categoryId: true,
+      description: true,
+      transactionDate: true,
+      transactionType: true,
+    },
+  });
+
+  return transactions;
+}

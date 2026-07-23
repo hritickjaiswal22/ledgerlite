@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const ALLOWED_LIMITS = [10, 20, 50] as const;
+
 export const createTransactionSchema = z.object({
   body: z.object({
     accountId: z.uuid(),
@@ -9,6 +11,19 @@ export const createTransactionSchema = z.object({
     transactionDate: z.coerce.date(),
     description: z.string().max(250).optional(),
   }),
+});
+
+export const getTransactionsQuerySchema = z.object({
+  limit: z.coerce
+    .number()
+    .default(10)
+    .refine(
+      (value): value is (typeof ALLOWED_LIMITS)[number] =>
+        ALLOWED_LIMITS.includes(value as (typeof ALLOWED_LIMITS)[number]),
+      {
+        message: "Limit must be one of 10, 20, or 50",
+      },
+    ),
 });
 
 export type CreateTransactionBody = z.infer<
