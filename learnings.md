@@ -384,6 +384,7 @@ Remove || "" for userIds
 Return only selected fields from services
 Add index on transaction for normal last n transaction type current has where on type
 fix expense enum type
+improve error handling for validators
 
 You're about **70% there**. Your explanation captures one advantage of cursor pagination (stability), but you're missing the **other major advantage**: **performance**.
 
