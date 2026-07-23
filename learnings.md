@@ -377,3 +377,9 @@ Since the goal is to become a strong backend engineer rather than build a framew
 3. **Later:** Learn how frameworks like NestJS and Hono propagate Zod types through middleware. That will make the limitations of plain Express much easier to appreciate.
 
 This way you learn the concepts in the same order they're typically encountered in real-world projects, without getting bogged down in advanced TypeScript before you've finished building your API.
+
+# Fixes needed are
+
+Remove || "" for userIds
+Return only selected fields from services
+Add index on transaction for normal last n transaction type current has where on type

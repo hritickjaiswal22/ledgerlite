@@ -24,6 +24,8 @@ export const getTransactionsQuerySchema = z.object({
         message: "Limit must be one of 10, 20, or 50",
       },
     ),
+  cursorId: z.uuid().optional(),
+  cursorDate: z.coerce.date().optional(),
 });
 
 export type CreateTransactionBody = z.infer<

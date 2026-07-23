@@ -1,7 +1,7 @@
 import { CreateTransactionBody } from "../validators/transactions";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../errors/AppError";
-import { Account } from "../generated/prisma/client";
+import { Account, Prisma } from "../generated/prisma/client";
 
 export async function createTransaction(
   body: CreateTransactionBody,
@@ -72,16 +72,46 @@ export async function createTransaction(
 
 interface getTransactionsQueryTypes {
   limit: number;
+  cursorId?: string | undefined;
+  cursorDate?: Date | undefined;
 }
 
 export async function getTransactions(
   queries: getTransactionsQueryTypes,
   userId: string,
 ) {
-  const transactions = await prisma.transaction.findMany({
-    where: {
-      userId,
-    },
+  const { limit, cursorDate, cursorId } = queries;
+
+  const where: Prisma.TransactionWhereInput = {
+    userId,
+  };
+
+  if (cursorDate && cursorId) {
+    where.OR = [
+      {
+        transactionDate: {
+          lt: cursorDate,
+        },
+      },
+      {
+        AND: [
+          {
+            transactionDate: {
+              equals: cursorDate,
+            },
+          },
+          {
+            id: {
+              lt: cursorId,
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  const rows = await prisma.transaction.findMany({
+    where,
     orderBy: [
       {
         transactionDate: "desc",
@@ -90,7 +120,7 @@ export async function getTransactions(
         id: "desc",
       },
     ],
-    take: queries.limit,
+    take: limit + 1,
     select: {
       id: true,
       accountId: true,
@@ -102,5 +132,19 @@ export async function getTransactions(
     },
   });
 
-  return transactions;
+  const hasNextPage = rows.length > limit;
+  const transactions = rows.slice(0, limit);
+  const lastTransaction = transactions[transactions.length - 1];
+  const nextCursor = hasNextPage
+    ? {
+        cursorId: lastTransaction.id,
+        cursorDate: lastTransaction.transactionDate,
+      }
+    : null;
+
+  return {
+    transactions,
+    hasNextPage,
+    nextCursor,
+  };
 }
