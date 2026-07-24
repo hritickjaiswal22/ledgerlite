@@ -50,8 +50,5 @@ export async function updateAccountController(
 ) {
   await updateAccount(req.params.accountId, req.body, req.user?.userId || "");
 
-  return res.status(204).send({
-    success: true,
-    message: "Account updated successfully",
-  });
+  return res.status(204).send();
 }
