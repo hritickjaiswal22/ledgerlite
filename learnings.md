@@ -713,3 +713,228 @@ because together they uniquely define the position in that ordered list.
 ---
 
 This "cursor matches the sort order" principle is the key mental model. Once you have it, you'll know how to design stable cursor pagination for almost any dataset, regardless of which columns you're sorting by.
+
+Good question. Let's go one level deeper. Prisma's `aggregate()` is essentially an ORM wrapper around SQL aggregate functions like `SUM`, `COUNT`, `AVG`, `MIN`, and `MAX`.
+
+Your code:
+
+```ts
+const expense = await prisma.transaction.aggregate({
+  where: {
+    userId,
+    type: "EXPENSE",
+    transactionDate: {
+      gte: startDate,
+      lt: endDate,
+    },
+  },
+  _sum: {
+    amount: true,
+  },
+});
+```
+
+Let's break it down.
+
+---
+
+# Step 1: Start from the table
+
+```ts
+prisma.transaction;
+```
+
+means
+
+```sql
+FROM transactions
+```
+
+---
+
+# Step 2: Apply the filter
+
+```ts
+where: {
+    userId,
+    type: "EXPENSE",
+    transactionDate: {
+        gte: startDate,
+        lt: endDate,
+    }
+}
+```
+
+becomes
+
+```sql
+WHERE
+    user_id = ?
+AND transaction_type = 'expense'
+AND transaction_date >= ?
+AND transaction_date < ?
+```
+
+Exactly like your handwritten SQL.
+
+---
+
+# Step 3: `_sum`
+
+This is the important part.
+
+```ts
+_sum: {
+  amount: true;
+}
+```
+
+does **not** mean "return all amounts."
+
+It means
+
+> "After filtering the rows, compute the SUM of the `amount` column."
+
+Equivalent SQL:
+
+```sql
+SELECT SUM(amount)
+```
+
+---
+
+# Putting it together
+
+Prisma
+
+```ts
+const expense = await prisma.transaction.aggregate({
+  where: {
+    userId,
+    type: "EXPENSE",
+    transactionDate: {
+      gte: startDate,
+      lt: endDate,
+    },
+  },
+  _sum: {
+    amount: true,
+  },
+});
+```
+
+↓
+
+SQL
+
+```sql
+SELECT
+    SUM(amount)
+FROM transactions
+WHERE
+    user_id = ?
+AND transaction_type = 'expense'
+AND transaction_date >= ?
+AND transaction_date < ?;
+```
+
+---
+
+# What does Prisma return?
+
+Many people expect
+
+```ts
+45000;
+```
+
+It actually returns an object.
+
+```ts
+{
+  _sum: {
+    amount: 45000;
+  }
+}
+```
+
+So you access it via
+
+```ts
+expense._sum.amount;
+```
+
+---
+
+# Why the extra `_sum` object?
+
+Because Prisma lets you aggregate multiple things at once.
+
+Example
+
+```ts
+const stats = await prisma.transaction.aggregate({
+  where: { userId },
+
+  _sum: {
+    amount: true,
+  },
+
+  _count: {
+    id: true,
+  },
+
+  _avg: {
+    amount: true,
+  },
+
+  _min: {
+    amount: true,
+  },
+
+  _max: {
+    amount: true,
+  },
+});
+```
+
+Response
+
+```ts
+{
+    _sum: {
+        amount: 42000
+    },
+
+    _count: {
+        id: 53
+    },
+
+    _avg: {
+        amount: 792.45
+    },
+
+    _min: {
+        amount: 50
+    },
+
+    _max: {
+        amount: 12000
+    }
+}
+```
+
+Equivalent SQL is conceptually like:
+
+```sql
+SELECT
+    SUM(amount),
+    COUNT(id),
+    AVG(amount),
+    MIN(amount),
+    MAX(amount)
+FROM transactions
+WHERE ...
+```
+
+---
